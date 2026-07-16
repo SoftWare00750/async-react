@@ -1,18 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+const STATUS_STYLES = {
+  idle: 'text-slate-500',
+  pending: 'text-yellow-400',
+  fulfilled: 'text-green-400',
+  rejected: 'text-red-400',
+};
 
 export default function AsyncFormDemo() {
   const [status, setStatus] = useState('idle'); // 'idle', 'pending', 'fulfilled', 'rejected'
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  // Guards against calling setState after the component has unmounted while
+  // the simulated request is still in flight (a real async-safety concern).
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Async function handling the submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // 1. Form Data extraction
     const formElement = e.target;
     const formData = new FormData(formElement);
     const formValues = Object.fromEntries(formData.entries());
+    const trimmedUsername = (formValues.username ?? '').trim();
+
+    if (!trimmedUsername) {
+      setStatus('rejected');
+      setError('Username cannot be blank or just whitespace.');
+      return;
+    }
 
     setStatus('pending');
     setError(null);
@@ -22,27 +45,30 @@ export default function AsyncFormDemo() {
       // 2. Promise & Await: Simulating an API call with a 2-second delay
       const simulatedResponse = await new Promise((resolve, reject) => {
         setTimeout(() => {
-          if (formValues.username.toLowerCase() === 'error') {
+          if (trimmedUsername.toLowerCase() === 'error') {
             reject(new Error("Simulated network failure. Username cannot be 'error'."));
           } else {
             // 3. JSON: Simulating a JSON string response from a server
             resolve(JSON.stringify({
               message: "Data successfully processed!",
-              receivedData: formValues,
+              receivedData: { ...formValues, username: trimmedUsername },
               timestamp: new Date().toISOString()
             }));
           }
         }, 2000);
       });
 
+      if (!isMountedRef.current) return;
+
       // 4. Parsing the JSON back into a JavaScript object
       const parsedData = JSON.parse(simulatedResponse);
-      
+
       setData(parsedData);
       setStatus('fulfilled');
       formElement.reset(); // Clear the form on success
-      
+
     } catch (err) {
+      if (!isMountedRef.current) return;
       setError(err.message);
       setStatus('rejected');
     }
@@ -56,19 +82,19 @@ export default function AsyncFormDemo() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-1">Username (Type 'error' to test rejection)</label>
-            <input 
-              type="text" 
-              id="username" 
-              name="username" 
-              required 
+            <input
+              type="text"
+              id="username"
+              name="username"
+              required
               className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
           <div>
             <label htmlFor="role" className="block text-sm font-medium text-slate-700 mb-1">Role</label>
-            <select 
-              id="role" 
-              name="role" 
+            <select
+              id="role"
+              name="role"
               className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
             >
               <option value="frontend">Frontend Developer</option>
@@ -76,8 +102,8 @@ export default function AsyncFormDemo() {
               <option value="fullstack">Fullstack Developer</option>
             </select>
           </div>
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={status === 'pending'}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2 px-4 rounded transition-colors"
           >
@@ -90,13 +116,13 @@ export default function AsyncFormDemo() {
       <div className="flex-1">
         <h3 className="text-xl font-bold text-slate-800 mb-4">Promise State & JSON Output</h3>
         <div className="bg-slate-900 text-green-400 p-4 rounded-lg font-mono text-sm h-full min-h-[250px]">
-          <p className="text-slate-400 mb-2">// Current Status: {status.toUpperCase()}</p>
-          
+          <p className={`mb-2 font-semibold ${STATUS_STYLES[status]}`}>// Current Status: {status.toUpperCase()}</p>
+
           {status === 'idle' && <p className="text-slate-500">Waiting for form submission...</p>}
           {status === 'pending' && <p className="text-yellow-400 animate-pulse">Awaiting Promise resolution...</p>}
           {status === 'rejected' && <p className="text-red-400">Error: {error}</p>}
           {status === 'fulfilled' && (
-            <pre className="overflow-x-auto">
+            <pre className="overflow-x-auto text-green-400">
               {JSON.stringify(data, null, 2)}
             </pre>
           )}
